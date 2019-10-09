@@ -20,7 +20,7 @@ eval_list = img_list[-10:-2]
 test_list = img_list[-2:]
 tmplt_name = data_path+'/sphere.nrrd'
 
-save_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_input2channel_insz64_cc_sgd'
+save_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4'
 if not os.path.exists(save_path):
     os.mkdir(save_path)
 # use tensorboard
@@ -29,7 +29,7 @@ writer = SummaryWriter(save_path+"/log")
 # device
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # model
-model = SimpleUnet(in_channels=2, base_filters=32, out_channels=3).to(device)
+model = SimpleUnet(in_channels=2, base_filters=16, out_channels=3).to(device)
 print("Print model's state_dict:")
 for param_tensor in model.state_dict():
     print(param_tensor, '\t', model.state_dict()[param_tensor].size())
@@ -37,7 +37,7 @@ for param_tensor in model.state_dict():
 # criterion
 criterion = cc_loss # nn.MSELoss()
 # optimizer
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=0.00005, nesterov=True)
+optimizer = optim.SGD(model.parameters(), lr=5e-4, momentum=0.9, weight_decay=0.00005, nesterov=True)
 
 network = ImgRegisterNetwork(model, criterion, optimizer, device)
 batch_sz = 4
@@ -50,6 +50,7 @@ train_loss_tb = 0
 save_iter = 100
 
 for epoch in range(total_epoch):
+    print('Epoch {}...'.format(epoch))
     # generate data for each epoch
     train_data = GenerateData(train_list, tmplt_name, crop_sz)
     train_loader = DataLoader(dataset=train_data, batch_size=batch_sz, shuffle=True)

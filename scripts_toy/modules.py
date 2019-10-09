@@ -47,6 +47,33 @@ def transform_layer(img, phi, device):
     return warped
 
 
+def transform_layer_position(img, phi):
+    """
+    Transformation layer. Phi is a position field.
+    Args:
+        img: images in shape [batch, channel, x, y, z], only first channel is the raw image
+        phi: deformable field in shape [batch, channel, x, y, z]
+    """
+    phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
+
+    # Scale to [-1,1]
+    phi_min = torch.min(phi, dim=1, keepdim=True)
+    phi_min = torch.min(phi_min.values, dim=2, keepdim=True)
+    phi_min = torch.min(phi_min.values, dim=3, keepdim=True)
+    phi_max = torch.max(phi, dim=1, keepdim=True)
+    phi_max = torch.max(phi_max.values, dim=2, keepdim=True)
+    phi_max = torch.max(phi_max.values, dim=3, keepdim=True)
+    phi = (phi-phi_min.values) * 2 / (phi_max.values-phi_min.values) -1
+
+    # Extract the first channel of img
+    img = torch.split(img, 1, dim=1)  # split channel, the first channel is raw img
+    
+    # Apply deformable field
+    warped = F.grid_sample(img[0], phi)
+
+    return warped
+
+
 def cc_loss(output, target):
     '''
     Pearson correlation loss
@@ -92,10 +119,10 @@ class ImgRegisterNetwork():
             # Forward
             phi = self.model(img)
             # Apply transformation layer
-            warped = transform_layer(img, phi, self.device)
+            # warped = transform_layer(img, phi, self.device)
+            warped = transform_layer_position(img, phi)  
             # Calculate loss
             loss = self.criterion(warped, tmplt)
-            loss.requires_grad = True
             training_loss += loss.item()
             # Zero the parameter gradients
             self.optimizer.zero_grad()                    
@@ -123,7 +150,8 @@ class ImgRegisterNetwork():
                 img = img.to(self.device)
                 tmplt = tmplt.to(self.device)
                 phi = self.model(img)
-                warped = transform_layer(img, phi, self.device)
+                # warped = transform_layer(img, phi, self.device)
+                warped = transform_layer_position(img, phi)  
                 loss = self.criterion(warped, tmplt)
                 eval_loss += loss.item()
 

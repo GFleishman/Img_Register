@@ -81,6 +81,10 @@ class GenerateData(Dataset):
         img, head = nrrd.read(img_name)
         tmplt, head = nrrd.read(self.tmplt_name)
 
+        # Normalize image and template
+        img = (img-img.mean()) / img.std()
+        tmplt = (tmplt-tmplt.mean()) / tmplt.std()
+
         # Crop on image and template
         x = np.random.randint(0, img.shape[0]-self.crop_sz[0]+1)
         y = np.random.randint(0, img.shape[1]-self.crop_sz[1]+1)

@@ -25,7 +25,7 @@ def _conv_block(in_ch, out_ch, kernel_sz=3, pad=1, bias=False):
 
 class SimpleUnet(nn.Module):
     """
-    3D UNet model as generator
+    Traditional UNet model as generator
     """
     def __init__(self, in_channels=1, base_filters=32, out_channels=3):
         super().__init__()
@@ -43,19 +43,19 @@ class SimpleUnet(nn.Module):
 
 
     def forward(self, img):
-        down1 = self.conv_down1(img) # 16x16x16
-        x = self.maxpool(down1) # 8x8x8
+        down1 = self.conv_down1(img) # 64x64x64
+        x = self.maxpool(down1) # 32x32x32
 
-        down2 = self.conv_down2(x) # 8x8x8
-        x = self.maxpool(down2) # 4x4x4
+        down2 = self.conv_down2(x)
+        x = self.maxpool(down2) # 16x16x16
 
-        x = self.conv_down3(x) # 4x4x4
+        x = self.conv_down3(x) # 16x16x16
         
-        x = self.upsample(x) # 8x8x8
+        x = self.upsample(x) # 32x32x32
         x = torch.cat([down2, x], dim=1)
         x = self.conv_up2(x)
 
-        x = self.upsample(x) # 16x16x16
+        x = self.upsample(x) # 64x64x64
         x = torch.cat([down1, x], dim=1)
         x = self.conv_up1(x)
 
