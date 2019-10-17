@@ -198,6 +198,7 @@ class ImgRegisterNetwork():
         self.model.eval()
 
         phi = np.zeros((3, img.shape[0], img.shape[1], img.shape[2]), dtype=img.dtype)
+        warped  = np.zeros(img.shape, dtype=img.dtype)
         for row in range(0, img.shape[0], input_sz[0]):
             for col in range(0, img.shape[1], input_sz[1]):
                 for vol in range(0, img.shape[2], input_sz[2]):
@@ -209,8 +210,12 @@ class ImgRegisterNetwork():
                     patch_img = patch_img.to(self.device)
                     # Apply model
                     patch_phi = self.model(patch_img)
+                    patch_warped = transform_layer_position(patch_img, patch_phi)
+
                     patch_phi = patch_phi.cpu()
                     patch_phi = patch_phi.detach().numpy()
                     phi[:, row:row+input_sz[0], col:col+input_sz[1], vol:vol+input_sz[2]] = patch_phi[0,:,:,:,:]
-
-        return phi
+                    patch_warped = patch_warped.cpu()
+                    patch_warped = patch_warped.detach().numpy()
+                    warped[row:row+input_sz[0], col:col+input_sz[1], vol:vol+input_sz[2]] = patch_warped
+        return phi, warped
