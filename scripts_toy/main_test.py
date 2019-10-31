@@ -1,4 +1,3 @@
-# import pickle
 import json
 import nrrd
 from model import SimpleUnet 
@@ -9,12 +8,12 @@ import glob
 import os 
 
 
-model_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4/'
+model_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_dis/'
 # test data
-# with open(model_path+'data_loss.json', 'r') as f:
-#     saved_data = json.load(f)
-# test_list = saved_data['test_list']
-test_list = ['/nrs/scicompsoft/dingx/GAN_data/toy_data/0/warped.nrrd', '/nrs/scicompsoft/dingx/GAN_data/toy_data/1/warped.nrrd']
+with open(model_path+'data_loss.json', 'r') as f:
+    saved_data = json.load(f)
+test_list = saved_data['test_list']
+
 # template
 tmplt, head = nrrd.read('/nrs/scicompsoft/dingx/GAN_data/toy_data/sphere.nrrd')
 tmplt = (tmplt-tmplt.mean()) / tmplt.std()  # normalize tmplt
@@ -38,7 +37,7 @@ for ckpt in ckpt_list:
         img, head = nrrd.read(test_list[i])
         img = (img-img.mean()) / img.std()  # normalize img
         phi, warped = network.test_model(ckpt, img, tmplt, input_sz)
-        name_phi = 'img{}_phi_'.format(i) + os.path.splitext(os.path.basename(ckpt))[0] + '.nrrd'
+        name_phi = 'img{}_phi_'.format(os.path.split(test_list[i])[0].split("/")[-1]) + os.path.splitext(os.path.basename(ckpt))[0] + '.nrrd'
         nrrd.write(model_path+name_phi, phi, phi_head)
-        name_warped = 'img{}_warped_'.format(i) + os.path.splitext(os.path.basename(ckpt))[0] + '.nrrd'
+        name_warped = 'img{}_warped_'.format(os.path.split(test_list[i])[0].split("/")[-1]) + os.path.splitext(os.path.basename(ckpt))[0] + '.nrrd'
         nrrd.write(model_path+name_warped, warped)

@@ -4,55 +4,12 @@ import numpy as np
 import os
 
 
-# @torch.no_grad()
-def transform_layer(img, phi, device):
-    """
-    Transformation layer. Phi is a deformable field, and will be changed to a position field.
-    Args:
-        img: images in shape [batch, channel, x, y, z], only first channel is the raw image
-        phi: deformable field in shape [batch, channel, x, y, z]
-        device: training device
-    """
-    phi = phi.cpu()
-    phi = phi.detach().numpy() # phi = phi.numpy()
-    phi = np.transpose(phi, (0,2,3,4,1))  # [batch, x, y, z, channel]
-
-    # Add a base grid to deformable field
-    base_grid = np.meshgrid(np.linspace(0,phi.shape[1]-1,phi.shape[1]), np.linspace(0,phi.shape[2]-1,phi.shape[2]), np.linspace(0,phi.shape[3]-1,phi.shape[3]))
-    base_grid = np.asarray(base_grid)  # [channel, y, x, z]
-    base_grid = np.transpose(base_grid, (2,1,3,0))  # [x, y, z, channel]
-    base_grid = np.expand_dims(base_grid, axis=0)  # [batch, x, y, z, channel]
-    phi += base_grid
-
-    # Scale to [-1,1]
-    phi_min = phi.min(axis=(1,2,3), keepdims=True)
-    phi_max = phi.max(axis=(1,2,3), keepdims=True)
-    phi = (phi-phi_min) * 2 / (phi_max-phi_min) -1
-
-    phi = torch.from_numpy(phi).float()
-    phi = phi.to(device)
-
-    # Extract the first channel of img
-    img = img.cpu()
-    img = img.detach().numpy() # img = img.numpy()  # [batch, channel, x, y, z]
-    img_split_channel = np.split(img, img.shape[1], axis=1)  # split channel
-    img = img_split_channel[0]  # only the first channel is raw img
-    img = torch.from_numpy(img).float()
-    img = img.to(device)
-    
-    # Apply deformable field
-    warped = F.grid_sample(img, phi)
-    warped.requires_grad = True
-
-    return warped
-
-
 def transform_layer_position(img, phi):
     """
     Transformation layer. Phi is a position field.
     Args:
         img: images in shape [batch, channel, x, y, z], only first channel is the raw image
-        phi: deformable field in shape [batch, channel, x, y, z]
+        phi: position field in shape [batch, channel, x, y, z]
     """
     phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
 
@@ -74,14 +31,103 @@ def transform_layer_position(img, phi):
     return warped
 
 
-def cc_loss(output, target):
+def transform_layer_displacement(img, phi):
+    """
+    Transformation layer. Phi is a displacement field.
+    Args:
+        img: images in shape [batch, channel, x, y, z], only first channel is the raw image
+        phi: displacement field in shape [batch, channel, x, y, z]
+    """
+    phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
+
+    # Add a base grid to deformable field
+    base_grid = torch.meshgrid(torch.linspace(0,phi.shape[1]-1,phi.shape[1]), torch.linspace(0,phi.shape[2]-1,phi.shape[2]), torch.linspace(0,phi.shape[3]-1,phi.shape[3]))
+    base_grid = torch.stack(base_grid)  # [channel, x, y, z]
+    base_grid = base_grid.permute(1,2,3,0)  # [x, y, z, channel]
+    base_grid = base_grid.unsqueeze(0)  # [batch, x, y, z, channel]
+    base_grid = base_grid.to(phi.dtype)
+    base_grid = base_grid.to(phi.device)
+    phi += base_grid 
+
+    # Scale to [-1,1]
+    phi_min = torch.min(phi, dim=1, keepdim=True)
+    phi_min = torch.min(phi_min.values, dim=2, keepdim=True)
+    phi_min = torch.min(phi_min.values, dim=3, keepdim=True)
+    phi_max = torch.max(phi, dim=1, keepdim=True)
+    phi_max = torch.max(phi_max.values, dim=2, keepdim=True)
+    phi_max = torch.max(phi_max.values, dim=3, keepdim=True)
+    phi = (phi-phi_min.values) * 2 / (phi_max.values-phi_min.values) -1
+
+    # Extract the first channel of img
+    img = torch.split(img, 1, dim=1)  # split channel, the first channel is raw img
+    
+    # Apply deformable field
+    warped = F.grid_sample(img[0], phi)
+
+    return warped
+
+
+def cc_loss(output, target, phi=None, lamda=None):
     '''
-    Pearson correlation loss
+    Pearson correlation loss with smooth control of phi
     '''
-    x = output - torch.mean(output)
-    y = target - torch.mean(target)
-    loss = torch.sum(x * y) / (torch.sqrt(torch.sum(x ** 2)) * torch.sqrt(torch.sum(y ** 2)))
-    return -loss
+    def calculate_gradient(phi):
+        '''
+        phi in shape [batch, channel, x, y, z]
+        '''
+        if phi is not None:
+            # weight = torch.tensor([[1,0,-1],[2,0,-2],[1,0,-1]], dtype=phi.dtype).to(phi.device)
+
+            # weight_x = weight.unsqueeze(0)
+            # weight_x = weight_x.expand(3,3,3)
+            # weight_x = weight_x.expand(phi.shape[1],1,3,3,3)
+            # grad_x = F.conv3d(phi, weight_x, groups=phi.shape[1], padding=1)
+
+            # weight_y = weight.unsqueeze(1)
+            # weight_y = weight_y.expand(3,3,3)
+            # weight_y = weight_y.expand(phi.shape[1],1,3,3,3)
+            # grad_y = F.conv3d(phi, weight_y, groups=phi.shape[1], padding=1)
+
+            # weight_z = weight.unsqueeze(2)
+            # weight_z = weight_z.expand(3,3,3)
+            # weight_z = weight_z.expand(phi.shape[1],1,3,3,3)
+            # grad_z = F.conv3d(phi, weight_z, groups=phi.shape[1], padding=1)
+
+            grad_xc = 0.5 * (phi[:,:,2:,:,:] - phi[:,:,:-2,:,:])
+            grad_xn = (phi[:,:,-1,:,:] - phi[:,:,-2,:,:]).unsqueeze(2)
+            grad_x0 = (phi[:,:,1,:,:] - phi[:,:,0,:,:]).unsqueeze(2)
+            grad_x = torch.cat((grad_x0,grad_xc,grad_xn), dim=2)
+
+            grad_yc = 0.5 * (phi[:,:,:,2:,:] - phi[:,:,:,:-2,:])
+            grad_yn = (phi[:,:,:,-1,:] - phi[:,:,:,-2,:]).unsqueeze(3)
+            grad_y0 = (phi[:,:,:,1,:] - phi[:,:,:,0,:]).unsqueeze(3)
+            grad_y = torch.cat((grad_y0,grad_yc,grad_yn), dim=3)
+
+            grad_zc = 0.5 * (phi[:,:,:,:,2:] - phi[:,:,:,:,:-2])
+            grad_zn = (phi[:,:,:,:,-1] - phi[:,:,:,:,-2]).unsqueeze(4)
+            grad_z0 = (phi[:,:,:,:,1] - phi[:,:,:,:,0]).unsqueeze(4)
+            grad_z = torch.cat((grad_z0,grad_zc,grad_zn), dim=4)
+
+            grad_phi = torch.sqrt(grad_x**2 + grad_y**2 + grad_z**2)
+            return grad_phi            
+        else:
+            pass
+    
+    x = output - torch.mean(output, dim=[2,3,4], keepdim=True)
+    y = target - torch.mean(target, dim=[2,3,4], keepdim=True)
+    cc = torch.sum(x * y) / (torch.sqrt(torch.sum(x ** 2)) * torch.sqrt(torch.sum(y ** 2)))
+    if phi is not None:
+        grad_phi = calculate_gradient(phi)
+        smooth = torch.sqrt(torch.sum(grad_phi**2))
+        if lamda is None:
+            lamda = torch.tensor([1.0])
+        lamda = lamda.to(phi.dtype)
+        lamda = lamda.to(phi.device)
+        loss = -cc + lamda * smooth
+    else:
+        loss = -cc
+    # print(loss)
+    return loss
 
 
 class ImgRegisterNetwork():
@@ -119,10 +165,9 @@ class ImgRegisterNetwork():
             # Forward
             phi = self.model(img)
             # Apply transformation layer
-            # warped = transform_layer(img, phi, self.device)
-            warped = transform_layer_position(img, phi)  
+            warped = transform_layer_displacement(img, phi)  # warped = transform_layer_position(img, phi)
             # Calculate loss
-            loss = self.criterion(warped, tmplt)
+            loss = self.criterion(warped, tmplt, phi)
             training_loss += loss.item()
             # Zero the parameter gradients
             self.optimizer.zero_grad()                    
@@ -150,9 +195,8 @@ class ImgRegisterNetwork():
                 img = img.to(self.device)
                 tmplt = tmplt.to(self.device)
                 phi = self.model(img)
-                # warped = transform_layer(img, phi, self.device)
-                warped = transform_layer_position(img, phi)  
-                loss = self.criterion(warped, tmplt)
+                warped = transform_layer_displacement(img, phi)  # warped = transform_layer_position(img, phi)
+                loss = self.criterion(warped, tmplt, phi)
                 eval_loss += loss.item()
 
         print("Batch-wise evaluation loss for current epoch is {}".format(eval_loss/(batch+1)))
@@ -210,7 +254,8 @@ class ImgRegisterNetwork():
                     patch_img = patch_img.to(self.device)
                     # Apply model
                     patch_phi = self.model(patch_img)
-                    patch_warped = transform_layer_position(patch_img, patch_phi)
+                    patch_warped = transform_layer_displacement(patch_img, patch_phi)
+                    # patch_warped = transform_layer_position(patch_img, patch_phi)
 
                     patch_phi = patch_phi.cpu()
                     patch_phi = patch_phi.detach().numpy()
