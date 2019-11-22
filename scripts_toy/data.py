@@ -79,7 +79,9 @@ class GenerateData(Dataset):
         # Get image and template
         img_name = self.img_list[idx]
         img, head = nrrd.read(img_name)
+        img = np.float32(img)
         tmplt, head = nrrd.read(self.tmplt_name)
+        tmplt = np.float32(tmplt)
 
         # Normalize image and template
         img = (img-img.mean()) / img.std()

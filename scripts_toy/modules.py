@@ -76,23 +76,6 @@ def cc_loss(output, target, phi=None, lamda=None):
         phi in shape [batch, channel, x, y, z]
         '''
         if phi is not None:
-            # weight = torch.tensor([[1,0,-1],[2,0,-2],[1,0,-1]], dtype=phi.dtype).to(phi.device)
-
-            # weight_x = weight.unsqueeze(0)
-            # weight_x = weight_x.expand(3,3,3)
-            # weight_x = weight_x.expand(phi.shape[1],1,3,3,3)
-            # grad_x = F.conv3d(phi, weight_x, groups=phi.shape[1], padding=1)
-
-            # weight_y = weight.unsqueeze(1)
-            # weight_y = weight_y.expand(3,3,3)
-            # weight_y = weight_y.expand(phi.shape[1],1,3,3,3)
-            # grad_y = F.conv3d(phi, weight_y, groups=phi.shape[1], padding=1)
-
-            # weight_z = weight.unsqueeze(2)
-            # weight_z = weight_z.expand(3,3,3)
-            # weight_z = weight_z.expand(phi.shape[1],1,3,3,3)
-            # grad_z = F.conv3d(phi, weight_z, groups=phi.shape[1], padding=1)
-
             grad_xc = 0.5 * (phi[:,:,2:,:,:] - phi[:,:,:-2,:,:])
             grad_xn = (phi[:,:,-1,:,:] - phi[:,:,-2,:,:]).unsqueeze(2)
             grad_x0 = (phi[:,:,1,:,:] - phi[:,:,0,:,:]).unsqueeze(2)
@@ -108,25 +91,27 @@ def cc_loss(output, target, phi=None, lamda=None):
             grad_z0 = (phi[:,:,:,:,1] - phi[:,:,:,:,0]).unsqueeze(4)
             grad_z = torch.cat((grad_z0,grad_zc,grad_zn), dim=4)
 
-            grad_phi = torch.sqrt(grad_x**2 + grad_y**2 + grad_z**2)
+            grad_phi = torch.sum(torch.sqrt(grad_x**2 + grad_y**2 + grad_z**2), dim=(1,2,3,4))
+            grad_phi = torch.mean(grad_phi)
+            print(grad_phi)
             return grad_phi            
         else:
             pass
     
-    x = output - torch.mean(output, dim=[2,3,4], keepdim=True)
-    y = target - torch.mean(target, dim=[2,3,4], keepdim=True)
-    cc = torch.sum(x * y) / (torch.sqrt(torch.sum(x ** 2)) * torch.sqrt(torch.sum(y ** 2)))
+    x = output - torch.mean(output, dim=(2,3,4), keepdim=True)
+    y = target - torch.mean(target, dim=(2,3,4), keepdim=True)
+    cc = torch.sum(x * y, dim=(1,2,3,4)) / (torch.sqrt(torch.sum(x ** 2, dim=(1,2,3,4))) * torch.sqrt(torch.sum(y ** 2, dim=(1,2,3,4))))
+    cc = torch.mean(cc)
+    print(cc)
     if phi is not None:
-        grad_phi = calculate_gradient(phi)
-        smooth = torch.sqrt(torch.sum(grad_phi**2))
+        smooth = calculate_gradient(phi)
         if lamda is None:
-            lamda = torch.tensor([1.0])
+            lamda = torch.tensor([0.1])
         lamda = lamda.to(phi.dtype)
         lamda = lamda.to(phi.device)
         loss = -cc + lamda * smooth
     else:
         loss = -cc
-    # print(loss)
     return loss
 
 

@@ -40,6 +40,8 @@ class SimpleUnet(nn.Module):
         self.conv_up1 = _conv_block(in_ch=base_filters+2*base_filters, out_ch=base_filters)
 
         self.conv_out = nn.Conv3d(in_channels=base_filters, out_channels=out_channels, kernel_size=1)
+        self.conv_out.weight.data.fill_(0)
+        self.conv_out.bias.data.fill_(1e-5)
 
 
     def forward(self, img):

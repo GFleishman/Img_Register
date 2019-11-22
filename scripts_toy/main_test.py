@@ -8,7 +8,7 @@ import glob
 import os 
 
 
-model_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_dis/'
+model_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_in64_dis/'
 # test data
 with open(model_path+'data_loss.json', 'r') as f:
     saved_data = json.load(f)

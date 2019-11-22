@@ -19,7 +19,7 @@ eval_list = img_list[-10:-2]
 test_list = img_list[-2:]
 tmplt_name = data_path+'/sphere.nrrd'
 
-save_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_dis'
+save_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_in64_dis'
 if not os.path.exists(save_path):
     os.mkdir(save_path)
 # use tensorboard
@@ -42,11 +42,11 @@ network = ImgRegisterNetwork(model, criterion, optimizer, device)
 batch_sz = 4
 crop_sz=(64,64,64)
 
-total_epoch = 10000
+total_epoch = 1
 train_loss_total = []
 eval_loss_total = []
 train_loss_tb = 0
-save_iter = 100
+save_iter = 1
 
 for epoch in range(total_epoch):
     print('Epoch {}...'.format(epoch))
@@ -68,7 +68,6 @@ for epoch in range(total_epoch):
         writer.add_scalar('eval loss', eval_loss, epoch)
         eval_loss_total.append(eval_loss)
 
-    if epoch%save_iter == save_iter-1:
         network.save_model(save_path, epoch+1)
         save_dict = {'train_list': train_list, 'eval_list': eval_list, 'test_list': test_list, 'train_loss_total': train_loss_total, 'eval_loss_total': eval_loss_total}
         with open(save_path+'/data_loss.json', 'w') as f:
