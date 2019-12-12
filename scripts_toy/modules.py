@@ -151,7 +151,7 @@ def cc_loss(output, target, phi=None, lamda=None):
     if phi is not None:
         smooth = calculate_gradient(phi)
         if lamda is None:
-            lamda = torch.tensor([1.0])
+            lamda = torch.tensor([0.1])
         lamda = lamda.to(phi.dtype)
         lamda = lamda.to(phi.device)
         loss = -cc + lamda * smooth
