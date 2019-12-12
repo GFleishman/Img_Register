@@ -19,7 +19,7 @@ eval_list = img_list[-10:-2]
 test_list = img_list[-2:]
 tmplt_name = data_path+'/sphere.nrrd'
 
-save_path = '/nrs/scicompsoft/dingx/GAN_model/debug_loss'
+save_path = '/nrs/scicompsoft/dingx/GAN_model/debug_loss_basegrid'
 if not os.path.exists(save_path):
     os.mkdir(save_path)
 # use tensorboard
