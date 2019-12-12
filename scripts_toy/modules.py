@@ -100,7 +100,7 @@ def transform_layer(img, phi):
 
     # Generate a base_grid
     base_grid = generate_base_grid(phi)
-    # Scale phi and add to base grid
+    # Add phi to base grid (no phi scaling)
     # phi = phi*2 / phi.shape[1]
     phi += base_grid
 
@@ -195,7 +195,7 @@ class ImgRegisterNetwork():
             # Forward
             phi = self.model(img)
             # Apply transformation layer
-            warped = transform_layer_displacement(img, phi)
+            warped = transform_layer(img, phi)
             # Calculate loss
             loss = self.criterion(warped, tmplt, phi)
             training_loss += loss.item()
@@ -225,7 +225,7 @@ class ImgRegisterNetwork():
                 img = img.to(self.device)
                 tmplt = tmplt.to(self.device)
                 phi = self.model(img)
-                warped = transform_layer_displacement(img, phi)
+                warped = transform_layer(img, phi)
                 loss = self.criterion(warped, tmplt, phi)
                 eval_loss += loss.item()
 
@@ -284,7 +284,7 @@ class ImgRegisterNetwork():
                     patch_img = patch_img.to(self.device)
                     # Apply model
                     patch_phi = self.model(patch_img)
-                    patch_warped = transform_layer_displacement(patch_img, patch_phi)
+                    patch_warped = transform_layer(patch_img, patch_phi)
 
                     patch_phi = patch_phi.cpu()
                     patch_phi = patch_phi.detach().numpy()
