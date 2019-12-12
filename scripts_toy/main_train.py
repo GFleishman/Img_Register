@@ -19,7 +19,7 @@ eval_list = img_list[-10:-2]
 test_list = img_list[-2:]
 tmplt_name = data_path+'/sphere.nrrd'
 
-save_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_in64_dis'
+save_path = '/nrs/scicompsoft/dingx/GAN_model/debug_loss'
 if not os.path.exists(save_path):
     os.mkdir(save_path)
 # use tensorboard
@@ -42,7 +42,7 @@ network = ImgRegisterNetwork(model, criterion, optimizer, device)
 batch_sz = 4
 crop_sz=(64,64,64)
 
-total_epoch = 1
+total_epoch = 100
 train_loss_total = []
 eval_loss_total = []
 train_loss_tb = 0

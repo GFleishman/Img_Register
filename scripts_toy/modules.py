@@ -4,7 +4,7 @@ import numpy as np
 import os
 
 
-def transform_layer_position(img, phi):
+def transform_layer_position(img, phi):  # old version
     """
     Transformation layer. Phi is a position field.
     Args:
@@ -31,7 +31,7 @@ def transform_layer_position(img, phi):
     return warped
 
 
-def transform_layer_displacement(img, phi):
+def transform_layer_displacement(img, phi):  # old version
     """
     Transformation layer. Phi is a displacement field.
     Args:
@@ -67,6 +67,50 @@ def transform_layer_displacement(img, phi):
     return warped
 
 
+@torch.no_grad()
+def generate_base_grid(phi):
+    """
+    Define a base grid
+    Args:
+        phi: displacement field in shape [batch, x, y, z, channel]
+    Return a base grid with no gradient recorded
+    """
+    base_grid = torch.meshgrid(torch.linspace(-1,1,phi.shape[1]), torch.linspace(-1,1,phi.shape[2]), torch.linspace(-1,1,phi.shape[3]))
+    base_grid = torch.stack(base_grid)  # [channel, x, y, z]
+    base_grid = base_grid.permute(1,2,3,0)  # [x, y, z, channel]
+    base_grid = base_grid.unsqueeze(0)  # [batch, x, y, z, channel]
+    base_grid = base_grid.to(phi.dtype)
+
+    # sz = phi.shape[1]
+    # theta = torch.tensor([[[0,0,1,0],[0,1,0,0],[1,0,0,0]]], dtype=torch.float32)
+    # base_grid = F.affine_grid(theta, torch.Size((1,1,sz,sz,sz)), align_corners=True)
+
+    base_grid = base_grid.to(phi.device)
+    return base_grid
+
+
+def transform_layer(img, phi):
+    """
+    Transformation layer. Phi is a displacement field.
+    Args:
+        img: images in shape [batch, channel, x, y, z], only first channel is the raw image
+        phi: displacement field in shape [batch, channel, x, y, z]
+    """
+    phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
+
+    # Generate a base_grid
+    base_grid = generate_base_grid(phi)
+    # Scale phi and add to base grid
+    # phi = phi*2 / phi.shape[1]
+    phi += base_grid
+
+    # Apply deformable field
+    img = torch.split(img, 1, dim=1)  # split channel, the first channel is raw img
+    warped = F.grid_sample(img[0], phi)
+
+    return warped
+
+
 def cc_loss(output, target, phi=None, lamda=None):
     '''
     Pearson correlation loss with smooth control of phi
@@ -91,10 +135,12 @@ def cc_loss(output, target, phi=None, lamda=None):
             grad_z0 = (phi[:,:,:,:,1] - phi[:,:,:,:,0]).unsqueeze(4)
             grad_z = torch.cat((grad_z0,grad_zc,grad_zn), dim=4)
 
-            grad_phi = torch.sum(torch.sqrt(grad_x**2 + grad_y**2 + grad_z**2), dim=(1,2,3,4))
+            # grad_phi = torch.sum(torch.sqrt(grad_x**2 + grad_y**2 + grad_z**2), dim=(1,2,3,4))
+            # grad_phi = torch.mean(grad_phi)
+            grad_xyz = torch.cat([grad_x, grad_y, grad_z], dim=1)
+            grad_phi = torch.sqrt(torch.sum(grad_xyz**2, dim=(1,2,3,4)))
             grad_phi = torch.mean(grad_phi)
-            print(grad_phi)
-            return grad_phi            
+            return grad_phi         
         else:
             pass
     
@@ -102,11 +148,10 @@ def cc_loss(output, target, phi=None, lamda=None):
     y = target - torch.mean(target, dim=(2,3,4), keepdim=True)
     cc = torch.sum(x * y, dim=(1,2,3,4)) / (torch.sqrt(torch.sum(x ** 2, dim=(1,2,3,4))) * torch.sqrt(torch.sum(y ** 2, dim=(1,2,3,4))))
     cc = torch.mean(cc)
-    print(cc)
     if phi is not None:
         smooth = calculate_gradient(phi)
         if lamda is None:
-            lamda = torch.tensor([0.1])
+            lamda = torch.tensor([1.0])
         lamda = lamda.to(phi.dtype)
         lamda = lamda.to(phi.device)
         loss = -cc + lamda * smooth
@@ -150,7 +195,7 @@ class ImgRegisterNetwork():
             # Forward
             phi = self.model(img)
             # Apply transformation layer
-            warped = transform_layer_displacement(img, phi)  # warped = transform_layer_position(img, phi)
+            warped = transform_layer_displacement(img, phi)
             # Calculate loss
             loss = self.criterion(warped, tmplt, phi)
             training_loss += loss.item()
@@ -180,7 +225,7 @@ class ImgRegisterNetwork():
                 img = img.to(self.device)
                 tmplt = tmplt.to(self.device)
                 phi = self.model(img)
-                warped = transform_layer_displacement(img, phi)  # warped = transform_layer_position(img, phi)
+                warped = transform_layer_displacement(img, phi)
                 loss = self.criterion(warped, tmplt, phi)
                 eval_loss += loss.item()
 
@@ -240,7 +285,6 @@ class ImgRegisterNetwork():
                     # Apply model
                     patch_phi = self.model(patch_img)
                     patch_warped = transform_layer_displacement(patch_img, patch_phi)
-                    # patch_warped = transform_layer_position(patch_img, patch_phi)
 
                     patch_phi = patch_phi.cpu()
                     patch_phi = patch_phi.detach().numpy()
