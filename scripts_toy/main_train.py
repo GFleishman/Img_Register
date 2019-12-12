@@ -14,12 +14,12 @@ import os
 
 data_path = '/nrs/scicompsoft/dingx/GAN_data/toy_data'
 img_list = glob.glob(data_path+'/*/warped.nrrd')
-train_list = img_list[:-10]
+train_list = img_list[0] # train_list = img_list[:-10]
 eval_list = img_list[-10:-2]
 test_list = img_list[-2:]
 tmplt_name = data_path+'/sphere.nrrd'
 
-save_path = '/nrs/scicompsoft/dingx/GAN_model/debug_loss_basegrid'
+save_path = '/nrs/scicompsoft/dingx/GAN_model/debug'
 if not os.path.exists(save_path):
     os.mkdir(save_path)
 # use tensorboard
@@ -39,10 +39,10 @@ criterion = cc_loss  # nn.MSELoss()
 optimizer = optim.SGD(model.parameters(), lr=5e-4, momentum=0.9, weight_decay=0.00005, nesterov=True)
 
 network = ImgRegisterNetwork(model, criterion, optimizer, device)
-batch_sz = 4
+batch_sz = 1
 crop_sz=(64,64,64)
 
-total_epoch = 100
+total_epoch = 1
 train_loss_total = []
 eval_loss_total = []
 train_loss_tb = 0

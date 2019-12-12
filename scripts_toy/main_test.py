@@ -6,9 +6,10 @@ import torch.nn as nn
 import torch.optim as optim
 import glob
 import os 
+import numpy as np 
 
 
-model_path = '/nrs/scicompsoft/dingx/GAN_model/simpleunet_bf16_cc_sgd5e-4_in64_dis/'
+model_path = '/nrs/scicompsoft/dingx/GAN_model/debug_loss_basegrid/'
 # test data
 with open(model_path+'data_loss.json', 'r') as f:
     saved_data = json.load(f)
@@ -17,10 +18,9 @@ test_list = saved_data['test_list']
 # template
 tmplt, head = nrrd.read('/nrs/scicompsoft/dingx/GAN_data/toy_data/sphere.nrrd')
 tmplt = (tmplt-tmplt.mean()) / tmplt.std()  # normalize tmplt
-# phi head used for writing
-phi, phi_head = nrrd.read(model_path+'phi_sample.nrrd')
 # checkpoint list
-ckpt_list = glob.glob(model_path+'/model_ckpt_*.pt')
+# ckpt_list = glob.glob(model_path+'/model_ckpt_*.pt')
+ckpt_list = [model_path+'/model_ckpt_100.pt']
 
 # Define the model
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -38,6 +38,6 @@ for ckpt in ckpt_list:
         img = (img-img.mean()) / img.std()  # normalize img
         phi, warped = network.test_model(ckpt, img, tmplt, input_sz)
         name_phi = 'img{}_phi_'.format(os.path.split(test_list[i])[0].split("/")[-1]) + os.path.splitext(os.path.basename(ckpt))[0] + '.nrrd'
-        nrrd.write(model_path+name_phi, phi, phi_head)
+        nrrd.write(model_path+name_phi, phi)
         name_warped = 'img{}_warped_'.format(os.path.split(test_list[i])[0].split("/")[-1]) + os.path.splitext(os.path.basename(ckpt))[0] + '.nrrd'
         nrrd.write(model_path+name_warped, warped)

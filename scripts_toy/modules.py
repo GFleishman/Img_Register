@@ -292,4 +292,5 @@ class ImgRegisterNetwork():
                     patch_warped = patch_warped.cpu()
                     patch_warped = patch_warped.detach().numpy()
                     warped[row:row+input_sz[0], col:col+input_sz[1], vol:vol+input_sz[2]] = patch_warped
+        phi = np.transpose(phi, (1,2,3,0))  # [x, y, z, channel]
         return phi, warped
