@@ -23,6 +23,17 @@ def _conv_block(in_ch, out_ch, kernel_sz=3, pad=1, bias=False):
     )
 
 
+# original u-net paper uses 2x2 kernels here, but asymmetrical padding is not supported, so trying with 3x3x3
+# TODO: docstring
+def _up_conv_block(in_ch, out_ch, kernel_sz=3, pad=1, bias=False):
+
+    return nn.Sequential(
+        nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True),
+        nn.Conv3d(in_channels=in_ch, out_channels=out_ch, kernel_size=kernel_sz, padding=pad, bias=bias),
+        nn.BatchNorm3d(num_features=out_ch)
+    )
+
+
 class SimpleUnet(nn.Module):
     """
     Traditional UNet model as generator
@@ -34,14 +45,15 @@ class SimpleUnet(nn.Module):
         self.conv_down3 = _conv_block(in_ch=2*base_filters, out_ch=4*base_filters)
 
         self.maxpool = nn.MaxPool3d(kernel_size=2)
-        self.upsample = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
 
-        self.conv_up2 = _conv_block(in_ch=2*base_filters+4*base_filters, out_ch=2*base_filters)
-        self.conv_up1 = _conv_block(in_ch=base_filters+2*base_filters, out_ch=base_filters)
+        self.conv_up2p5 = _up_conv_block(in_ch=4*base_filters, out_ch=2*base_filters)
+        self.conv_up2 = _conv_block(in_ch=4*base_filters, out_ch=2*base_filters)
 
-        self.conv_out = nn.Conv3d(in_channels=base_filters, out_channels=out_channels, kernel_size=1)
+        self.conv_up1p5 = _up_conv_block(in_ch=2*base_filters, out_ch=base_filters)
+        self.conv_up1 = _conv_block(in_ch=2*base_filters, out_ch=base_filters)
+
+        self.conv_out = nn.Conv3d(in_channels=base_filters, out_channels=out_channels, kernel_size=1, bias=False)
         self.conv_out.weight.data.fill_(0)
-        self.conv_out.bias.data.fill_(1e-5)
 
 
     def forward(self, img):
@@ -52,14 +64,17 @@ class SimpleUnet(nn.Module):
         x = self.maxpool(down2) # 16x16x16
 
         x = self.conv_down3(x) # 16x16x16
-        
-        x = self.upsample(x) # 32x32x32
+       
+        x = self.conv_up2p5(x) 
         x = torch.cat([down2, x], dim=1)
         x = self.conv_up2(x)
 
-        x = self.upsample(x) # 64x64x64
+        x = self.conv_up1p5(x)
         x = torch.cat([down1, x], dim=1)
         x = self.conv_up1(x)
 
         phi = self.conv_out(x)
         return phi
+
+
+

@@ -4,70 +4,6 @@ import numpy as np
 import os
 
 
-def transform_layer_position(img, phi):  # old version
-    """
-    Transformation layer. Phi is a position field.
-    Args:
-        img: images in shape [batch, channel, x, y, z], only first channel is the raw image
-        phi: position field in shape [batch, channel, x, y, z]
-    """
-    phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
-
-    # Scale to [-1,1]
-    phi_min = torch.min(phi, dim=1, keepdim=True)
-    phi_min = torch.min(phi_min.values, dim=2, keepdim=True)
-    phi_min = torch.min(phi_min.values, dim=3, keepdim=True)
-    phi_max = torch.max(phi, dim=1, keepdim=True)
-    phi_max = torch.max(phi_max.values, dim=2, keepdim=True)
-    phi_max = torch.max(phi_max.values, dim=3, keepdim=True)
-    phi = (phi-phi_min.values) * 2 / (phi_max.values-phi_min.values) -1
-
-    # Extract the first channel of img
-    img = torch.split(img, 1, dim=1)  # split channel, the first channel is raw img
-    
-    # Apply deformable field
-    warped = F.grid_sample(img[0], phi)
-
-    return warped
-
-
-def transform_layer_displacement(img, phi):  # old version
-    """
-    Transformation layer. Phi is a displacement field.
-    Args:
-        img: images in shape [batch, channel, x, y, z], only first channel is the raw image
-        phi: displacement field in shape [batch, channel, x, y, z]
-    """
-    phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
-
-    # Add a base grid to deformable field
-    base_grid = torch.meshgrid(torch.linspace(0,phi.shape[1]-1,phi.shape[1]), torch.linspace(0,phi.shape[2]-1,phi.shape[2]), torch.linspace(0,phi.shape[3]-1,phi.shape[3]))
-    base_grid = torch.stack(base_grid)  # [channel, x, y, z]
-    base_grid = base_grid.permute(1,2,3,0)  # [x, y, z, channel]
-    base_grid = base_grid.unsqueeze(0)  # [batch, x, y, z, channel]
-    base_grid = base_grid.to(phi.dtype)
-    base_grid = base_grid.to(phi.device)
-    phi += base_grid 
-
-    # Scale to [-1,1]
-    phi_min = torch.min(phi, dim=1, keepdim=True)
-    phi_min = torch.min(phi_min.values, dim=2, keepdim=True)
-    phi_min = torch.min(phi_min.values, dim=3, keepdim=True)
-    phi_max = torch.max(phi, dim=1, keepdim=True)
-    phi_max = torch.max(phi_max.values, dim=2, keepdim=True)
-    phi_max = torch.max(phi_max.values, dim=3, keepdim=True)
-    phi = (phi-phi_min.values) * 2 / (phi_max.values-phi_min.values) -1
-
-    # Extract the first channel of img
-    img = torch.split(img, 1, dim=1)  # split channel, the first channel is raw img
-    
-    # Apply deformable field
-    warped = F.grid_sample(img[0], phi)
-
-    return warped
-
-
-@torch.no_grad()
 def generate_base_grid(phi):
     """
     Define a base grid
@@ -75,16 +11,15 @@ def generate_base_grid(phi):
         phi: displacement field in shape [batch, x, y, z, channel]
     Return a base grid with no gradient recorded
     """
-    base_grid = torch.meshgrid(torch.linspace(-1,1,phi.shape[1]), torch.linspace(-1,1,phi.shape[2]), torch.linspace(-1,1,phi.shape[3]))
-    base_grid = torch.stack(base_grid)  # [channel, x, y, z]
+    base_grid = torch.meshgrid(torch.linspace(-1,1,phi.shape[1]),
+                               torch.linspace(-1,1,phi.shape[2]),
+                               torch.linspace(-1,1,phi.shape[3]))
+    # torch seems to want [z, y, x] displacements
+    # applying base_grid only without this rearrangement results in axis reordering
+    base_grid = torch.stack((base_grid[2], base_grid[1], base_grid[0]))
     base_grid = base_grid.permute(1,2,3,0)  # [x, y, z, channel]
     base_grid = base_grid.unsqueeze(0)  # [batch, x, y, z, channel]
     base_grid = base_grid.to(phi.dtype)
-
-    # sz = phi.shape[1]
-    # theta = torch.tensor([[[0,0,1,0],[0,1,0,0],[1,0,0,0]]], dtype=torch.float32)
-    # base_grid = F.affine_grid(theta, torch.Size((1,1,sz,sz,sz)), align_corners=True)
-
     base_grid = base_grid.to(phi.device)
     return base_grid
 
@@ -97,28 +32,21 @@ def transform_layer(img, phi):
         phi: displacement field in shape [batch, channel, x, y, z]
     """
     phi = phi.permute(0,2,3,4,1)  # [batch, x, y, z, channel]
-
-    # Generate a base_grid
     base_grid = generate_base_grid(phi)
-    # Add phi to base grid (no phi scaling)
-    # phi = phi*2 / phi.shape[1]
     phi += base_grid
-
-    # Apply deformable field
     img = torch.split(img, 1, dim=1)  # split channel, the first channel is raw img
     warped = F.grid_sample(img[0], phi)
-
     return warped
 
 
-def cc_loss(output, target, phi=None, lamda=None):
-    '''
+def cc_loss(output, target, phi=None, lamda=1e-5):
+    """
     Pearson correlation loss with smooth control of phi
-    '''
+    """
     def calculate_gradient(phi):
-        '''
+        """
         phi in shape [batch, channel, x, y, z]
-        '''
+        """
         if phi is not None:
             grad_xc = 0.5 * (phi[:,:,2:,:,:] - phi[:,:,:-2,:,:])
             grad_xn = (phi[:,:,-1,:,:] - phi[:,:,-2,:,:]).unsqueeze(2)
@@ -135,29 +63,28 @@ def cc_loss(output, target, phi=None, lamda=None):
             grad_z0 = (phi[:,:,:,:,1] - phi[:,:,:,:,0]).unsqueeze(4)
             grad_z = torch.cat((grad_z0,grad_zc,grad_zn), dim=4)
 
-            # grad_phi = torch.sum(torch.sqrt(grad_x**2 + grad_y**2 + grad_z**2), dim=(1,2,3,4))
-            # grad_phi = torch.mean(grad_phi)
-            grad_xyz = torch.cat([grad_x, grad_y, grad_z], dim=1)
-            grad_phi = torch.sqrt(torch.sum(grad_xyz**2, dim=(1,2,3,4)))
+            grad_xyz   = torch.cat([grad_x, grad_y, grad_z], dim=1)
+            grad_phi   = torch.sum(torch.sqrt(torch.sum(grad_xyz**2, dim=1)).unsqueeze(1), dim=(2,3,4))
             grad_phi = torch.mean(grad_phi)
-            return grad_phi         
+            return grad_xyz, grad_phi
         else:
             pass
     
     x = output - torch.mean(output, dim=(2,3,4), keepdim=True)
     y = target - torch.mean(target, dim=(2,3,4), keepdim=True)
-    cc = torch.sum(x * y, dim=(1,2,3,4)) / (torch.sqrt(torch.sum(x ** 2, dim=(1,2,3,4))) * torch.sqrt(torch.sum(y ** 2, dim=(1,2,3,4))))
+    cc = torch.sum(x * y, dim=(1,2,3,4)) / (torch.sqrt(torch.sum(x ** 2, dim=(1,2,3,4))) *
+                                            torch.sqrt(torch.sum(y ** 2, dim=(1,2,3,4))))
     cc = torch.mean(cc)
+    grad = 0
     if phi is not None:
-        smooth = calculate_gradient(phi)
-        if lamda is None:
-            lamda = torch.tensor([0.1])
+        grad, smooth = calculate_gradient(phi)
+        lamda = torch.tensor([lamda])
         lamda = lamda.to(phi.dtype)
         lamda = lamda.to(phi.device)
         loss = -cc + lamda * smooth
     else:
         loss = -cc
-    return loss
+    return loss, grad
 
 
 class ImgRegisterNetwork():
@@ -196,8 +123,14 @@ class ImgRegisterNetwork():
             phi = self.model(img)
             # Apply transformation layer
             warped = transform_layer(img, phi)
+
+
+            import nrrd
+            nrrd.write('./warped_in_train_it500.nrrd', warped.cpu().detach().numpy().squeeze())
+
+
             # Calculate loss
-            loss = self.criterion(warped, tmplt, phi)
+            loss, _ = self.criterion(warped, tmplt, phi)
             training_loss += loss.item()
             # Zero the parameter gradients
             self.optimizer.zero_grad()                    
@@ -208,6 +141,9 @@ class ImgRegisterNetwork():
 
         print("Batch-wise training loss for current epoch is {}".format(training_loss/(batch+1)))
         return training_loss/(batch+1)
+
+
+# ONLY TESTED UP TO HERE
 
 
     def eval_model(self, data):

@@ -17,7 +17,9 @@ def random_crop(img, crop_point, crop_sz):
     Return:
         cropped image
     """
-    return img[crop_point[0]:crop_point[0]+crop_sz[0], crop_point[1]:crop_point[1]+crop_sz[1], crop_point[2]:crop_point[2]+crop_sz[2]]
+    return img[crop_point[0]:crop_point[0]+crop_sz[0],
+               crop_point[1]:crop_point[1]+crop_sz[1],
+               crop_point[2]:crop_point[2]+crop_sz[2]]
 
 
 def flip_img(img, opt):
@@ -57,7 +59,7 @@ class GenerateData(Dataset):
     """
     Generate training and validation data
     """
-    def __init__(self, img_list, tmplt_name, crop_sz=(32,32,32)):
+    def __init__(self, img_list, tmplt_name, crop_sz=(32,32,32), normalize=False, augment=False):
         """
         Args:
             img_list: a list of image names
@@ -67,6 +69,8 @@ class GenerateData(Dataset):
         self.img_list = img_list
         self.tmplt_name = tmplt_name
         self.crop_sz = crop_sz
+        self.normalize = normalize
+        self.augment = augment
 
     def __getitem__(self, idx):
         """
@@ -84,8 +88,9 @@ class GenerateData(Dataset):
         tmplt = np.float32(tmplt)
 
         # Normalize image and template
-        img = (img-img.mean()) / img.std()
-        tmplt = (tmplt-tmplt.mean()) / tmplt.std()
+        if self.normalize:
+            img = (img-img.mean()) / img.std()
+            tmplt = (tmplt-tmplt.mean()) / tmplt.std()
 
         # Crop on image and template
         x = np.random.randint(0, img.shape[0]-self.crop_sz[0]+1)
@@ -95,12 +100,13 @@ class GenerateData(Dataset):
         tmplt = random_crop(tmplt, (x,y,z), self.crop_sz)
 
         # Augmentation to image and template
-        opt = np.random.randint(4)
-        img = flip_img(img, opt)
-        tmplt = flip_img(tmplt, opt)
-        k = np.random.randint(4)
-        img = rot_img(img, k)
-        tmplt = rot_img(tmplt, k)
+        if self.augment:
+            opt = np.random.randint(4)
+            img = flip_img(img, opt)
+            tmplt = flip_img(tmplt, opt)
+            k = np.random.randint(4)
+            img = rot_img(img, k)
+            tmplt = rot_img(tmplt, k)
 
         # To tensor, shape (channel, x, y, z)
         img = np.expand_dims(img, axis=0)
@@ -117,11 +123,12 @@ class GenerateData(Dataset):
 
 if __name__ == "__main__":
 
-    data_path = '/nrs/scicompsoft/dingx/GAN_data/toy_data/'
-    img_list = glob.glob(data_path+'*/warped.nrrd')
+    data_path = '/groups/scicompsoft/home/fleishmang/exper/dldr/mini_training_test/warped_sphere/'
+    img_list = [data_path+'warped.nrrd']
     tmplt_name = data_path+'sphere.nrrd'
-    Data = GenerateData(img_list, tmplt_name)
-    img, tmplt = Data.__getitem__(1)
+
+    Data = GenerateData(img_list, tmplt_name, crop_sz=(64, 64, 64))
+    img, tmplt = Data[0]
     print(img.shape)
     print(tmplt.shape)
 
@@ -136,6 +143,7 @@ if __name__ == "__main__":
     tmplt_ch0 = tmplt[0,:,:,:]
 
     curr_path = os.path.dirname(os.path.abspath(__file__))
+    print(curr_path)
     if not os.path.exists(curr_path+'/data_view'):
         os.mkdir(curr_path+'/data_view')
     nrrd.write(curr_path+'/data_view/img_ch0.nrrd', img_ch0)

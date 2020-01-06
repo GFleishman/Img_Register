@@ -69,7 +69,11 @@ for epoch in range(total_epoch):
         eval_loss_total.append(eval_loss)
 
         network.save_model(save_path, epoch+1)
-        save_dict = {'train_list': train_list, 'eval_list': eval_list, 'test_list': test_list, 'train_loss_total': train_loss_total, 'eval_loss_total': eval_loss_total}
+        save_dict = {'train_list': train_list,
+                     'eval_list': eval_list,
+                     'test_list': test_list,
+                     'train_loss_total': train_loss_total,
+                     'eval_loss_total': eval_loss_total}
         with open(save_path+'/data_loss.json', 'w') as f:
             json.dump(save_dict, f)
 
