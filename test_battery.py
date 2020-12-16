@@ -13,8 +13,8 @@ from torch.utils.data import DataLoader
 
 
 # get the validation data
-moving_path      = sys.argv[1]
-fixed_path       = sys.argv[2]
+fixed_path      = sys.argv[1]
+moving_path       = sys.argv[2]
 transform_path   = sys.argv[3]  # transform actually takes fixed image to moving image
 
 moving, meta      = nrrd.read(moving_path)
@@ -64,20 +64,26 @@ if sys.argv[4] in ['basic', 'both']:
 # evaluate training based tests
 if sys.argv[4] in ['train', 'both']:
 
+    if len(sys.argv) == 5:
+        moving_paths = [moving_path,]
+    elif len(sys.argv) == 6:
+        moving_paths = [moving_path, sys.argv[5]]
+    else:
+        moving_paths = [moving_path,] + sys.argv[5:]
+
+    print(moving_paths)
+
     # construct the registration network
     device      = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    optimizer   = optim.SGD(model.parameters(), lr=5e-4, momentum=0.9, weight_decay=5e-5, nesterov=True)
+    optimizer   = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9, weight_decay=1e-3)
     network     = ImgRegisterNetwork(model, loss, optimizer, device)
 
 
     # load the data as DataLoader and train
-    train_data     = GenerateData([moving_path], fixed_path, (64, 64, 64))
+    train_data     = GenerateData(moving_paths, fixed_path, (64, 64, 64))
     train_loader   = DataLoader(dataset=train_data, batch_size=1, shuffle=True)
 
-    for i in range(500):
-        print(i)
-        train_loss     = network.train_model(train_loader)
+    for i in range(200):
+        train_loss     = network.train_model(train_loader, i)
 
-
-    
